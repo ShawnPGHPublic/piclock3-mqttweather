@@ -32,7 +32,7 @@ widgets:
   forecast:
     plugin: PiClock3.Forecast
     region: forecast
-    forecast-provider: mqttweather
+    forecast-provider: openmeteo
 
   current-conditions:
     plugin: PiClock3.CurrentConditions
