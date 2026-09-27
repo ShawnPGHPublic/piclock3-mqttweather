@@ -1,0 +1,65 @@
+description: >
+  A weather source that takes current temperature from an MQTT topic and
+  every other reading - humidity, wind, pressure, icons, hourly and daily
+  forecast - from the weather-provider it wraps.
+
+provides: [conditions, hourly, daily]
+
+settings:
+
+  weather-provider:
+    is: provider
+    provides: [conditions, hourly, daily]
+    required: true
+    help: >
+      The existing weather instance (openmeteo, metar, …) that still
+      supplies humidity, wind, pressure and the forecast.  Only the
+      current temperature is replaced.
+
+  mqtt-host:
+    is: string
+    help: Broker hostname or IP.
+  mqtt-port:
+    is: number
+    range: [1, 65535]
+    help: Broker port.  1883 plain, 8883 typically TLS.
+  mqtt-temp-topic:
+    is: string
+    required: true
+    help: Topic that publishes the temperature.
+  mqtt-humidity-topic:
+    is: string
+    help: >
+      Topic that publishes humidity.  Blank means the same topic as
+      mqtt-topic — use humidity-payload-key when that payload is JSON
+      with both readings.
+  humidity-payload-key:
+    is: string
+    help: >
+      Dotted path into a JSON humidity payload, e.g. humidity or
+      current.humidity.  Blank accepts a bare number, or JSON keys
+      humidity / relative_humidity / rh / value / state.    
+  mqtt-username:
+    is: string
+    help: Broker username.  Leave blank for anonymous.
+  mqtt-password:
+    is: string
+    help: Broker password.
+  mqtt-client-id:
+    is: string
+    help: MQTT client id.  Change it if two clocks share a broker.
+  mqtt-unit:
+    is: string
+    help: >
+      Unit the payload is in - C, F or K.  Converted to Celsius before
+      the widgets see it, which is what CurrentConditions and Forecast
+      already expect.
+  payload-key:
+    is: string
+    help: >
+      Dotted path into a JSON payload, e.g. temperature or current.temp.
+      Blank accepts a bare number, or JSON keys temperature / temp /
+      value / state.
+  tls:
+    is: boolean
+    help: Use TLS against the broker.

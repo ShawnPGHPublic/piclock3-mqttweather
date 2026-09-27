@@ -1,0 +1,42 @@
+# python3 PyQtPiClock3.py plugins/MqttWeather/examples/mqttweather.yaml
+
+pages:
+  clock-page: {order: 0, layout: classic, theme: circuit}
+
+language: en
+
+location:
+  latitude: 45
+  longitude: -93
+  timezone:
+
+providers:
+  openmeteo:
+    plugin: PiClock3.OpenMeteo
+
+  # wrap Open-Meteo; only current temp and humidity comes from MQTT
+  mqttweather:
+    plugin: plugins.MqttWeather
+    weather-provider: openmeteo
+    mqtt-host: localhost
+    mqtt-port: 1883
+    mqtt-temp-topic: home/outdoor/temperature
+    mqtt-humidity-topic: home/outdoor/humidity
+    mqtt-unit: F
+    # payload-key: temperature   # if the payload is {"temperature": 21.4}
+
+widgets:
+  clock: {plugin: PiClock3.AnalogClock, region: clock}
+  date:  {plugin: PiClock3.Date, region: date}
+
+  forecast:
+    plugin: PiClock3.Forecast
+    region: forecast
+    forecast-provider: mqttweather
+
+  current-conditions:
+    plugin: PiClock3.CurrentConditions
+    region: current
+    conditions-provider: mqttweather
+
+logging-level: info

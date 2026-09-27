@@ -1,0 +1,16 @@
+kind: forecast-source
+
+# the providers: name that still answers humidity, wind, forecast
+weather-provider: ''
+
+mqtt-host: localhost
+mqtt-port: 1883
+mqtt-temp-topic: ''
+mqtt-humidity-topic: ''
+humidity-payload-key: ''
+mqtt-username: ''
+mqtt-password: ''
+mqtt-client-id: piclock3-mqttweather
+mqtt-unit: C
+payload-key: ''
+tls: false
