@@ -18,23 +18,23 @@ python3 PyQtPiClock3.py examples/mqttweather.yaml
 
 Add the mqttweather provider to your config:
 
-  mqttweather:
+`  mqttweather:
     plugin: plugins.MqttWeather
     weather-provider: openmeteo
     mqtt-host: localhost
     mqtt-port: 1883
     mqtt-temp-topic: home/outdoor/temperature
     mqtt-humidity-topic: home/outdoor/humidity
-    mqtt-unit: F
+    mqtt-unit: F`
 
 ***Note** it is using the openmeteo to fill in any missing weather data
 
 For you weather widget use the mqttweather provider instead of openmeteo:
 
-  forecast:
+`  forecast:
     plugin: PiClock3.Forecast
     region: forecast
-    forecast-provider: mqttweather
+    forecast-provider: mqttweather`
 
 
 
