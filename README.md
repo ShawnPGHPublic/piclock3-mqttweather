@@ -37,8 +37,8 @@ For you weather widget use the mqttweather provider instead of
 openmeteo:
 
 ```
-forecast:  
-    plugin: PiClock3.Forecast  
-    region: forecast  
-    forecast-provider: mqttweather  
+current-conditions:
+    plugin: PiClock3.CurrentConditions
+    region: current
+    conditions-provider: mqttweather
 `
