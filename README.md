@@ -27,8 +27,8 @@ mqttweather:
     plugin: plugins.MqttWeather
     weather-provider: openmeteo
     mqtt-host: mqtt.lan
-    mqtt-username: '{apikeys.mqtt-user}'
-    mqtt-password: '{apikeys.mqtt}'
+    mqtt-username: '{apikeys.mqtt-username}'
+    mqtt-password: '{apikeys.mqtt-password}'
     mqtt-topics:
       temp:       {topic: ha/sensor/outside_temperature/state, unit: F}
       humidity:   {topic: ha/sensor/outside_humidity/state}
