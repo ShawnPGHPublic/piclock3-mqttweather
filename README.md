@@ -6,13 +6,13 @@ humidity if available via listening to a MQTT topic.
 ## Install
 
 cd ~/PiClock3
-
-git clone https://github.com/ShawnPGHPublic/piclock3-mqttweather
-plugins/mqttweather
+export PIP_BREAK_SYSTEM_PACKAGES=1
+python3 -m pip install paho-mqtt
+git clone https://github.com/ShawnPGHPublic/piclock3-mqttweather plugins/MqttWeather
 
 ## Test
 
-python3 PyQtPiClock3.py examples/mqttweather.yaml
+python3 PyQtPiClock3.py plugins/MqttWeather/examples/mqttweather.yaml
 
 ------------------------------------------------------------------------
 
