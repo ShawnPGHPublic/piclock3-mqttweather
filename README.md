@@ -24,13 +24,19 @@ Add the mqttweather provider to your config:
 
 ```
 mqttweather:  
-    plugin: plugins.MqttWeather  
-    weather-provider: openmeteo    
-    mqtt-host: localhost
-    mqtt-port: 1883
-    mqtt-temp-topic: home/outdoor/temperature
-    mqtt-humidity-topic: home/outdoor/humidity  
-    mqtt-unit: F
+    plugin: plugins.MqttWeather
+    weather-provider: openmeteo
+    mqtt-host: mqtt.lan
+    mqtt-username: '{apikeys.mqtt-user}'
+    mqtt-password: '{apikeys.mqtt}'
+    mqtt-topics:
+      temp:       {topic: ha/sensor/outside_temperature/state, unit: F}
+      humidity:   {topic: ha/sensor/outside_humidity/state}
+      wind:       {topic: ha/sensor/outside_wind_speed/state, unit: mph}
+      wind-dir:   {topic: ha/sensor/outside_wind_direction/state}
+      gust:       {topic: ha/sensor/cotech_wind_gust/state, unit: mph}
+      feels-like: {topic: ha/sensor/outside_feels_like/state, unit: F}
+      
 ```
 
 \***Note** it is using the openmeteo provider to fill in any missing weather data

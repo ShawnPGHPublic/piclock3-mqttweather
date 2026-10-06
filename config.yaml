@@ -1,16 +1,19 @@
 kind: forecast-source
 
-# the providers: name that still answers humidity, wind, forecast
 weather-provider: ''
 
 mqtt-host: localhost
 mqtt-port: 1883
-mqtt-temp-topic: ''
-mqtt-humidity-topic: ''
-humidity-payload-key: ''
 mqtt-username: '{apikeys.mqtt-user}'
 mqtt-password: '{apikeys.mqtt}'
 mqtt-client-id: piclock3-mqttweather
-mqtt-unit: C
-payload-key: ''
 tls: false
+
+mqtt-topics: {}
+
+# legacy; used only for a field mqtt-topics does not already name
+mqtt-temp-topic: ''
+mqtt-humidity-topic: ''
+mqtt-temp-unit: C
+payload-key: ''
+humidity-payload-key: ''

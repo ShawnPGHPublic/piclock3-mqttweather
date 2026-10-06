@@ -1,7 +1,9 @@
 description: >
-  A weather source that takes current temperature from an MQTT topic and
-  every other reading - humidity, wind, pressure, icons, hourly and daily
-  forecast - from the weather-provider it wraps.
+  A weather source that takes current readings from MQTT topics and
+  everything else — icons, pressure, hourly and daily forecast — from
+  the weather-provider it wraps.  Each topic names the unit its payload
+  is already in; values are converted to Celsius, percent, km/h and
+  degrees before widgets see them.
 
 provides: [conditions, hourly, daily]
 
@@ -13,8 +15,7 @@ settings:
     required: true
     help: >
       The existing weather instance (openmeteo, metar, …) that still
-      supplies humidity, wind, pressure and the forecast.  Only the
-      current temperature is replaced.
+      supplies anything MQTT does not publish.
 
   mqtt-host:
     is: string
@@ -23,22 +24,6 @@ settings:
     is: number
     range: [1, 65535]
     help: Broker port.  1883 plain, 8883 typically TLS.
-  mqtt-temp-topic:
-    is: string
-    required: true
-    help: Topic that publishes the temperature.
-  mqtt-humidity-topic:
-    is: string
-    help: >
-      Topic that publishes humidity.  Blank means the same topic as
-      mqtt-topic — use humidity-payload-key when that payload is JSON
-      with both readings.
-  humidity-payload-key:
-    is: string
-    help: >
-      Dotted path into a JSON humidity payload, e.g. humidity or
-      current.humidity.  Blank accepts a bare number, or JSON keys
-      humidity / relative_humidity / rh / value / state.    
   mqtt-username:
     is: string
     help: Broker username.  Leave blank for anonymous.
@@ -48,18 +33,54 @@ settings:
   mqtt-client-id:
     is: string
     help: MQTT client id.  Change it if two clocks share a broker.
-  mqtt-unit:
-    is: string
-    help: >
-      Unit the payload is in - C, F or K.  Converted to Celsius before
-      the widgets see it, which is what CurrentConditions and Forecast
-      already expect.
-  payload-key:
-    is: string
-    help: >
-      Dotted path into a JSON payload, e.g. temperature or current.temp.
-      Blank accepts a bare number, or JSON keys temperature / temp /
-      value / state.
   tls:
     is: boolean
     help: Use TLS against the broker.
+
+  mqtt-topics:
+    is: table
+    of: mqtt-reading
+    help: >
+      One entry per reading to replace.  Keys are conditions fields:
+      temp, humidity, wind, wind-dir, gust, feels-like, dew, pressure.
+      A string is accepted as a bare topic.
+
+  # the original two-topic form; still accepted, ignored when mqtt-topics
+  # already names that field
+  mqtt-temp-topic:
+    is: string
+    help: Topic that publishes the temperature.  Prefer mqtt-topics.temp.
+  mqtt-humidity-topic:
+    is: string
+    help: Topic that publishes humidity.  Prefer mqtt-topics.humidity.
+  mqtt-temp-unit:
+    is: string
+    help: Unit of mqtt-temp-topic — C, F or K.  Prefer a unit on the topic.
+  payload-key:
+    is: string
+    help: Dotted JSON path used when a topic does not name its own.
+  humidity-payload-key:
+    is: string
+    help: Dotted JSON path for mqtt-humidity-topic.
+
+types:
+
+  mqtt-reading:
+    is: block
+    help: One MQTT topic and the unit its payload is already in.
+    of:
+      topic:
+        is: string
+        required: true
+        help: Topic that publishes this reading.  Home Assistant state topics are a bare number.
+      unit:
+        is: string
+        help: >
+          Payload unit.  Temperature: C, F, K.  Speed: mph, kph, mps, kt.
+          Direction: deg.  Pressure: hPa, mb, inHg.  Blank means the
+          reading is already in the unit the widgets expect.
+      payload-key:
+        is: string
+        help: >
+          Dotted path into a JSON payload, e.g. state or current.temp.
+          Blank accepts a bare number.

@@ -1,10 +1,11 @@
-"""Weather provider that overlays MQTT temperature and humidity.
+"""Weather provider that overlays MQTT readings on another provider.
 
-Wind, pressure, feels-like, icons, hourly and daily forecasts stay with the
-named weather-provider (Open-Meteo, METAR, …).  conditions()['temp'] and
-conditions()['humidity'] are replaced when those MQTT payloads have arrived.
-Until then the wrapped source's own readings are shown so the panel is not
-blank at startup.
+Anything not published on MQTT — icons, pressure, hourly and daily forecast —
+stays with weather-provider.  A reading is replaced only after its topic has
+delivered a number, so the panel is not blank at startup.
+
+Widgets expect Celsius, percent, km/h and degrees.  Each topic names the unit
+its payload is already in; this converts before handing the number on.
 """
 import json
 import logging
@@ -15,10 +16,33 @@ from PiClock3.Weather import Weather
 
 logger = logging.getLogger(__name__)
 
+# conditions() key -> quantity in PiClock3/units, and the unit widgets expect
+FIELDS = {
+    'temp':       ('temperature', 'C'),
+    'feels-like': ('temperature', 'C'),
+    'dew':        ('temperature', 'C'),
+    'humidity':   ('percent',     '%'),
+    'wind':       ('speed',       'kph'),
+    'gust':       ('speed',       'kph'),
+    'wind-dir':   ('direction',   'deg'),
+    'pressure':   ('pressure',    'hPa'),
+}
+
+# names a payload may use that are not keys in quantities.yaml
+UNIT_ALIAS = {
+    'FAHRENHEIT': 'F', 'CELSIUS': 'C', 'KELVIN': 'K',
+    'MPH': 'mph', 'KPH': 'kph', 'KMH': 'kph', 'KM/H': 'kph',
+    'MPS': 'mps', 'M/S': 'mps',
+    'KT': 'kt', 'KTS': 'kt', 'KNOT': 'kt', 'KNOTS': 'kt',
+    'DEG': 'deg', 'DEGREES': 'deg', '°': 'deg',
+    'HPA': 'hPa', 'MB': 'mb', 'INHG': 'inHg',
+    '%': '%', 'PERCENT': '%', 'RH': '%',
+}
+
 
 class _Bridge(QObject):
     """MQTT callbacks arrive off the Qt thread; this hops them back."""
-    reading = pyqtSignal(str, float)   # kind ('temp' | 'humidity'), value
+    reading = pyqtSignal(str, float)   # conditions key, value in widget units
 
 
 class MqttWeather(Weather):
@@ -29,11 +53,9 @@ class MqttWeather(Weather):
         super().__init__(piclock, name, config)
         self.source = None
         self.listeners = []
-        self.mqtt_temp = None       # Celsius, or None before the first message
-        self.mqtt_humidity = None   # percent, or None before the first message
+        self.mqtt = {}          # field -> value in the unit widgets expect
+        self.readings = {}      # field -> {topic, unit, payload-key}
         self.client = None
-        self.temp_topic = ''
-        self.humidity_topic = ''
         self.bridge = _Bridge()
         self.bridge.reading.connect(self._gotReading)
 
@@ -44,7 +66,7 @@ class MqttWeather(Weather):
         if not source_name:
             raise ValueError(
                 '%s needs weather-provider: the Open-Meteo / METAR / … '
-                'instance that still supplies wind and forecast'
+                'instance that still supplies what MQTT does not'
                 % self.name)
         try:
             self.source = self.piclock.plugins[source_name]
@@ -55,6 +77,7 @@ class MqttWeather(Weather):
 
         self.attribution = self.source.attribution or source_name
         self.source.subscribe(self._sourceUpdated)
+        self.readings = self._readings()
         self._connectMqtt()
 
     def pageChange(self):
@@ -74,12 +97,9 @@ class MqttWeather(Weather):
         if not now:
             return now
         overlay = dict(now)
-        if self.mqtt_temp is not None:
-            overlay['temp'] = self.mqtt_temp
-            overlay['temp-source'] = 'mqtt'
-        if self.mqtt_humidity is not None:
-            overlay['humidity'] = self.mqtt_humidity
-            overlay['humidity-source'] = 'mqtt'
+        for field, value in self.mqtt.items():
+            overlay[field] = value
+            overlay[field + '-source'] = 'mqtt'
         return overlay
 
     def hourly(self, count, step):
@@ -87,6 +107,35 @@ class MqttWeather(Weather):
 
     def daily(self, count):
         return [] if self.source is None else self.source.daily(count)
+
+    # ---------------------------------------------------------------- config
+
+    def _readings(self):
+        """mqtt-topics:, with the old single-topic keys folded in."""
+        raw = self.config.get('mqtt-topics') or {}
+        readings = {}
+        if isinstance(raw, dict):
+            for field, spec in raw.items():
+                if isinstance(spec, str):
+                    spec = {'topic': spec}
+                if isinstance(spec, dict) and spec.get('topic'):
+                    readings[field] = spec
+
+        legacy_unit = self.config.get('mqtt-temp-unit') or 'C'
+        legacy = (
+            ('temp', 'mqtt-temp-topic', self.config.get('payload-key')),
+            ('humidity', 'mqtt-humidity-topic',
+             self.config.get('humidity-payload-key')),
+        )
+        for field, key, payload_key in legacy:
+            topic = (self.config.get(key) or '').strip()
+            if topic and field not in readings:
+                readings[field] = {
+                    'topic': topic,
+                    'unit': legacy_unit if field == 'temp' else '',
+                    'payload-key': payload_key or '',
+                }
+        return readings
 
     # ---------------------------------------------------------------- MQTT
 
@@ -98,22 +147,19 @@ class MqttWeather(Weather):
                 '%s needs paho-mqtt  (pip3 install paho-mqtt)', self.name)
             return
 
-        host = self.config.get('mqtt-host') or 'localhost'
-        port = int(self.config.get('mqtt-port') or 1883)
-        self.temp_topic = (self.config.get('mqtt-temp-topic') or '').strip()
-        self.humidity_topic = (
-            self.config.get('mqtt-humidity-topic') or '').strip()
-        if not self.temp_topic and not self.humidity_topic:
-            logger.error(
-                '%s needs mqtt-temp-topic: and/or mqtt-humidity-topic:', self.name)
+        if not self.readings:
+            logger.error('%s needs mqtt-topics: (or mqtt-temp-topic:)', self.name)
             return
 
+        host = self.config.get('mqtt-host') or 'localhost'
+        port = int(self.config.get('mqtt-port') or 1883)
         client_id = self.config.get('mqtt-client-id') or 'piclock3-mqttweather'
         kwargs = {'client_id': client_id}
         version = getattr(mqtt, 'CallbackAPIVersion', None)
         if version is not None:
             kwargs['callback_api_version'] = version.VERSION1
         self.client = mqtt.Client(**kwargs)
+        self.client.reconnect_delay_set(min_delay=2, max_delay=60)
 
         user = self.expand(self.config.get('mqtt-username') or '')
         password = self.expand(self.config.get('mqtt-password') or '')
@@ -135,12 +181,12 @@ class MqttWeather(Weather):
         self.client.loop_start()
 
     def _topics(self):
-        topics = []
-        if self.temp_topic:
-            topics.append(self.temp_topic)
-        if self.humidity_topic and self.humidity_topic not in topics:
-            topics.append(self.humidity_topic)
-        return topics
+        seen = []
+        for spec in self.readings.values():
+            topic = self.expand(str(spec.get('topic') or '')).strip()
+            if topic and topic not in seen:
+                seen.append(topic)
+        return seen
 
     def _onConnect(self, client, userdata, flags, rc):
         if rc != 0:
@@ -151,50 +197,31 @@ class MqttWeather(Weather):
             logger.info('%s subscribed %s', self.name, topic)
 
     def _onDisconnect(self, client, userdata, rc):
-        logger.warning('%s mqtt disconnected rc=%s', self.name, rc)
+        if rc != 0:
+            logger.warning('%s mqtt disconnected rc=%s', self.name, rc)
 
     def _onMessage(self, client, userdata, msg):
         payload = msg.payload.decode('utf-8', errors='replace').strip()
-        topic = msg.topic
-
-        same_topic = (
-            self.temp_topic
-            and self.humidity_topic
-            and self.temp_topic == self.humidity_topic
-        ) or (self.temp_topic and not self.humidity_topic)
-
-        if topic == self.temp_topic:
-            value = self._parsePayload(payload, self.config.get('payload-key'),
-                                       ('temperature', 'temp', 'value', 'state'))
-            if value is not None:
-                self.bridge.reading.emit('temp', self._toCelsius(value))
-            elif not same_topic:
-                logger.warning('%s unreadable temperature %r', self.name, payload)
-
-        if topic == self.humidity_topic or (same_topic and topic == self.temp_topic):
-            value = self._parsePayload(
-                payload,
-                self.config.get('humidity-payload-key'),
-                ('humidity', 'relative_humidity', 'rh', 'value', 'state'))
-            if value is not None:
-                self.bridge.reading.emit('humidity', self._toPercent(value))
-            elif topic == self.humidity_topic and not same_topic:
-                logger.warning('%s unreadable humidity %r', self.name, payload)
-
-    def _gotReading(self, kind, value):
-        if kind == 'temp':
-            if self.mqtt_temp is not None and abs(self.mqtt_temp - value) < 0.01:
-                return
-            self.mqtt_temp = value
-            logger.info('%s mqtt temperature %.2f C', self.name, value)
-        elif kind == 'humidity':
-            if (self.mqtt_humidity is not None
-                    and abs(self.mqtt_humidity - value) < 0.05):
-                return
-            self.mqtt_humidity = value
-            logger.info('%s mqtt humidity %.1f %%', self.name, value)
-        else:
+        if payload.lower() in ('', 'unknown', 'unavailable', 'none', 'null'):
             return
+        for field, spec in self.readings.items():
+            topic = self.expand(str(spec.get('topic') or '')).strip()
+            if topic != msg.topic:
+                continue
+            value = self._parsePayload(payload, spec.get('payload-key'))
+            if value is None:
+                logger.warning('%s unreadable %s %r', self.name, field, payload)
+                continue
+            converted = self._convert(field, value, spec.get('unit'))
+            if converted is not None:
+                self.bridge.reading.emit(field, converted)
+
+    def _gotReading(self, field, value):
+        previous = self.mqtt.get(field)
+        if previous is not None and abs(previous - value) < 0.01:
+            return
+        self.mqtt[field] = value
+        logger.info('%s mqtt %s %.2f', self.name, field, value)
         self._notify()
 
     def _sourceUpdated(self):
@@ -206,9 +233,9 @@ class MqttWeather(Weather):
 
     # ---------------------------------------------------------------- payload
 
-    def _parsePayload(self, payload, key, guesses):
+    def _parsePayload(self, payload, key):
         """A bare number, or a JSON object using a dotted key / common names."""
-        key = (key or '').strip()
+        key = (key or self.config.get('payload-key') or '').strip()
         if not key:
             try:
                 return float(payload)
@@ -221,7 +248,9 @@ class MqttWeather(Weather):
             if isinstance(obj, (int, float)):
                 return float(obj)
             if isinstance(obj, dict):
-                for guess in guesses:
+                for guess in ('value', 'state', 'temperature', 'temp',
+                              'humidity', 'relative_humidity', 'rh',
+                              'wind', 'speed', 'gust', 'direction'):
                     if guess in obj:
                         try:
                             return float(obj[guess])
@@ -242,15 +271,27 @@ class MqttWeather(Weather):
         except (TypeError, ValueError):
             return None
 
-    def _toCelsius(self, value):
-        unit = (self.config.get('mqtt-unit') or 'C').strip().upper()
-        if unit in ('F', 'FAHRENHEIT'):
-            return (value - 32.0) * 5.0 / 9.0
-        if unit in ('K', 'KELVIN'):
-            return value - 273.15
-        return value
+    def _convert(self, field, value, unit):
+        """payload unit -> the unit CurrentConditions already asks for."""
+        quantity, target = FIELDS.get(field, (None, None))
+        if quantity is None:
+            logger.warning('%s ignoring unknown mqtt field %r', self.name, field)
+            return None
+        if field == 'humidity':
+            return self._toPercent(value)
 
-    def _toPercent(self, value):
+        name = UNIT_ALIAS.get(str(unit or '').strip().upper(),
+                              (unit or '').strip())
+        if not name or name == target:
+            return float(value)
+        try:
+            return self.piclock.units.convert(quantity, name, target, float(value))
+        except SystemExit:
+            logger.warning('%s unknown unit %r for %s', self.name, unit, field)
+            return None
+
+    @staticmethod
+    def _toPercent(value):
         """Accept 0–100 or a 0–1 fraction."""
         if 0.0 <= value <= 1.0:
             return value * 100.0
