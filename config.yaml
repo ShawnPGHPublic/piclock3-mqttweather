@@ -8,8 +8,8 @@ mqtt-port: 1883
 mqtt-temp-topic: ''
 mqtt-humidity-topic: ''
 humidity-payload-key: ''
-mqtt-username: ''
-mqtt-password: ''
+mqtt-username: '{apikeys.mqtt-user}'
+mqtt-password: '{apikeys.mqtt}'
 mqtt-client-id: piclock3-mqttweather
 mqtt-unit: C
 payload-key: ''

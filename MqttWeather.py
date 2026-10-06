@@ -115,8 +115,8 @@ class MqttWeather(Weather):
             kwargs['callback_api_version'] = version.VERSION1
         self.client = mqtt.Client(**kwargs)
 
-        user = self.config.get('mqtt-username') or ''
-        password = self.config.get('mqtt-password') or ''
+        user = self.expand(self.config.get('mqtt-username') or '')
+        password = self.expand(self.config.get('mqtt-password') or '')
         if user:
             self.client.username_pw_set(user, password)
         if self.config.get('tls'):
